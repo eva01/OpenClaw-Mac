@@ -534,3 +534,49 @@ expected_state:
 - gateway: running on 127.0.0.1:18789
 - inference: non-empty content field in response
 - dashboard: opens browser, no token prompt (token is in the URL hash)
+
+## UNINSTALL
+
+Removes OpenClaw, model servers, proxy, and all associated data. Each block is independent — skip any you want to keep.
+
+```bash
+# 1. stop and remove pm2 model servers + proxy
+pm2 delete glm-4.7-flash mlx-proxy-glm 2>/dev/null || true
+pm2 delete qwen3.5-35b mlx-proxy-qwen 2>/dev/null || true   # if Qwen was set up
+pm2 save
+
+# 2. remove pm2 LaunchAgent (auto-start on reboot)
+pm2 unstartup launchd 2>/dev/null || true
+# if that prints a sudo command, run it
+
+# 3. stop and remove OpenClaw LaunchAgent
+launchctl bootout gui/$(id -u) ~/Library/LaunchAgents/ai.openclaw.gateway.plist 2>/dev/null || true
+rm -f ~/Library/LaunchAgents/ai.openclaw.gateway.plist
+
+# 4. uninstall OpenClaw npm package
+npm uninstall -g openclaw
+
+# 5. remove OpenClaw config and data
+rm -rf ~/.openclaw
+
+# 6. remove model weights (LARGE — frees disk space)
+rm -rf ~/models/GLM-4.7-flash-8bit
+rm -rf ~/models/Qwen3.5-35B-A3B-8bit   # if downloaded
+rm -rf ~/models/mlx-venv                # shared venv
+
+# 7. remove HuggingFace model cache
+rm -rf ~/.cache/huggingface/hub/models--mlx-community--GLM-4.7-flash-8bit
+rm -rf ~/.cache/huggingface/hub/models--mlx-community--Qwen3.5-35B-A3B-8bit
+
+# 8. [optional] uninstall pm2 globally (only if not used for other projects)
+# npm uninstall -g pm2
+# rm -rf ~/.pm2
+```
+
+verify_clean:
+```bash
+pm2 list                          # should show no mlx/openclaw processes
+launchctl list | grep openclaw    # should return nothing
+ls ~/Library/LaunchAgents/ | grep openclaw  # should return nothing
+which openclaw                    # should return "not found"
+```
