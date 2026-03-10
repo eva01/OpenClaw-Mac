@@ -129,9 +129,11 @@ lsof -i :10002  # or :10004 — must be empty; kill any existing process first
 mlx_vlm only (Qwen3.5 series):
 ```bash
 pm2 start ~/models/mlx-venv/bin/python3 --name "qwen3.5-9b" --interpreter none \
-  -- -m mlx_vlm.server --model ~/models/Qwen3.5-9B-8bit --host 0.0.0.0 --port 10002 --trust-remote-code
+  -- -m mlx_vlm.server --host 0.0.0.0 --port 10002
 pm2 save
 ```
+
+NOTE (mlx_vlm 0.4.0+): `--model` and `--trust-remote-code` flags were removed from server startup. The model is now loaded per-request via the `model` field in API calls. The proxy and OpenClaw config handle this automatically.
 
 mlx_lm only (GLM-4.7-flash / kimi-linear) — no --trust-remote-code flag:
 ```bash
@@ -325,13 +327,12 @@ Gemini web search grounding:
 {"tools": {"web": {"search": {"provider": "gemini", "gemini": {"apiKey": "AIza...", "model": "gemini-2.5-flash"}}}}}
 ```
 
-MiniMax (cloud API, anthropic-messages protocol):
+MiniMax pay-as-you-go (direct API key, anthropic-messages protocol):
 ```json
 {
-  "env": {"MINIMAX_API_KEY": "..."},
   "models": {"mode": "merge", "providers": {"minimax": {
     "baseUrl": "https://api.minimax.io/anthropic",
-    "apiKey": "${MINIMAX_API_KEY}",
+    "apiKey": "your-minimax-api-key",
     "api": "anthropic-messages",
     "models": [{"id": "MiniMax-M2.5","name": "MiniMax M2.5","reasoning": false,"input": ["text"],
       "cost": {"input":15,"output":60,"cacheRead":2,"cacheWrite":10},"contextWindow": 200000,"maxTokens": 8192}]
@@ -339,6 +340,16 @@ MiniMax (cloud API, anthropic-messages protocol):
   "agents": {"defaults": {"model": {"primary": "minimax/MiniMax-M2.5"}, "models": {"minimax/MiniMax-M2.5": {"alias": "MiniMax"}}}}
 }
 ```
+
+MiniMax Coding Plan (OAuth — for subscription users):
+
+Coding Plan uses OAuth, not a direct API key. Run this interactively in your terminal:
+```bash
+openclaw plugins enable minimax-portal-auth
+openclaw gateway restart
+openclaw onboard --auth-choice minimax-portal
+```
+Select **Global (api.minimax.io)** when prompted, then complete browser login. OpenClaw writes the OAuth token to config automatically — no manual JSON editing needed.
 
 MiniMax via LM Studio (openai-responses protocol):
 ```json
@@ -409,6 +420,7 @@ CONSTRAINTS:
 - groupAllowFrom: use numeric user IDs only, not @usernames (non-numeric entries silently ignored)
 - wrong config path: channels.telegram NOT plugins.entries.telegram (causes "plugin not found")
 - docker only: set env OPENCLAW_TELEGRAM_DISABLE_AUTO_SELECT_FAMILY=true for image 2026.2.17+; not needed on bare macOS
+- groupPolicy "allowlist" with empty groupAllowFrom silently drops all group messages — if group messages aren't arriving, check: `"groupPolicy": "open"` or add your Telegram user ID to `groupAllowFrom`
 
 ## STEP 8 — SKILLS (optional)
 
@@ -443,6 +455,7 @@ openclaw run "Run a SecureClaw security audit on my current setup and summarize 
 | symptom | cause | fix |
 |---------|-------|-----|
 | HTTP 422 | old mlx_vlm from PyPI | clone + reinstall: `git -c http.version=HTTP/1.1 clone --depth 1 https://github.com/Blaizzy/mlx-vlm.git /tmp/mlx-vlm && pip install /tmp/mlx-vlm` |
+| mlx_vlm server exits: "unrecognized arguments: --model" | mlx_vlm 0.4.0 removed startup `--model` flag | remove `--model` and `--trust-remote-code` from the pm2 start command; model loads per-request |
 | mlx_lm server exits immediately | unsupported flag passed | remove `--trust-remote-code` from mlx_lm commands |
 | "unauthorized: gateway token missing" in dashboard | token not in URL | run `openclaw dashboard` — opens browser with token pre-filled in URL (`#token=...`); do NOT navigate to bare `http://127.0.0.1:18789/` directly |
 | connection refused on proxy port | proxy not running or port conflict | `pm2 list` → check status; `lsof -i :10012` → kill conflict |
@@ -542,11 +555,19 @@ curl -sf http://127.0.0.1:10012/v1/models   # Qwen proxy
 openclaw gateway status   # expect: Runtime: running, Listening: 127.0.0.1:18789
 
 # 5. end-to-end inference through proxy
+# GLM (mlx_lm — no model field needed, --strip-model removes it):
 curl -s -X POST http://127.0.0.1:10014/v1/chat/completions \
   -H "Content-Type: application/json" \
   -d '{"messages":[{"role":"user","content":"Say hello."}],"stream":false,"max_tokens":4000}' \
   | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['choices'][0]['message']['content'])"
 # expect: non-empty response (GLM is a reasoning model — needs max_tokens>=4000 to finish thinking)
+
+# Qwen (mlx_vlm — must pass full model path in request body):
+curl -s -X POST http://127.0.0.1:10012/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{"model":"/Users/you/models/Qwen3.5-9B-8bit","messages":[{"role":"user","content":"Say hello."}],"stream":false,"max_tokens":100}' \
+  | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['choices'][0]['message']['content'])"
+# expect: non-empty response; first call takes ~30s to load model into GPU
 
 # 6. open dashboard (auto-fills token in URL)
 openclaw dashboard
