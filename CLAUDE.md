@@ -80,10 +80,34 @@ CONSTRAINTS:
 
 ```bash
 curl -fsSL https://openclaw.ai/install.sh | bash
+```
+
+sharp_build_error_fix: `SHARP_IGNORE_GLOBAL_LIBVIPS=1 npm install -g openclaw@latest`
+
+### First-time setup — run the interactive wizard
+
+OpenClaw's onboarding wizard walks you through auth, gateway port, and daemon install. **Run this in your terminal** (not via an AI agent — it requires you to read prompts and make choices):
+
+```bash
 openclaw onboard --install-daemon
 ```
 
-non_interactive:
+The wizard will ask:
+1. **Auth choice** — for local-only setup, skip cloud API keys for now; you can add them later via config
+2. **Gateway port** — default `18789` is fine
+3. **Gateway bind** — choose `loopback` (local only) unless you need remote access
+4. **Install daemon** — say yes to auto-start on login
+
+Once done, open the dashboard to confirm everything is running:
+
+```bash
+openclaw dashboard   # opens browser with token pre-filled — do NOT navigate to the bare URL directly
+```
+
+### Scripted / non-interactive (AI agent use)
+
+Skip the wizard and write config directly (Steps 3–5 cover this). For a quick non-interactive install with a cloud key:
+
 ```bash
 openclaw onboard --non-interactive \
   --auth-choice anthropic-api-key \
@@ -93,7 +117,6 @@ openclaw onboard --non-interactive \
   --install-daemon
 ```
 
-sharp_build_error_fix: `SHARP_IGNORE_GLOBAL_LIBVIPS=1 npm install -g openclaw@latest`
 verify: `openclaw gateway status`
 
 ## STEP 3 — MODEL SERVER (pm2)
