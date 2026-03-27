@@ -1,7 +1,9 @@
-<!-- mac-setup.md — Agent-readable Mac dev environment setup -->
-<!-- Tell Claude Code / Codex: "follow mac-setup.md to set up my terminal environment" -->
+<!-- jin-terminal.md — Agent-readable Mac dev environment setup -->
+<!-- Tell Claude Code / Codex: "follow jin-terminal.md to set up my terminal environment" -->
 
 CONTEXT: AI agent executing this file. Install and configure a Mac terminal environment (Ghostty, Fish, Starship, ccs). Run bash blocks exactly as written. macOS + Homebrew required.
+
+KNOWN_ISSUE: Homebrew Rust (rustup via brew) does NOT generate ~/.cargo/env.fish. Any fish config containing `source ~/.cargo/env.fish` will error on login. Step 3 includes an auto-fix for this.
 
 STOP_IF_NOT_MAC:
 ```bash
@@ -79,6 +81,15 @@ REPO="https://raw.githubusercontent.com/eva01/jin-terminal/main"
 mkdir -p ~/.config/fish
 curl -fsSL "$REPO/fish/config.fish" -o ~/.config/fish/config.fish
 echo "OK: fish config installed"
+
+# Fix: remove 'source ~/.cargo/env.fish' if present
+# Homebrew Rust (rustup via brew) never generates ~/.cargo/env.fish — this line causes
+# "source: No such file or directory" on every terminal login.
+# fish_add_path for rustup/bin (already in the config) is sufficient.
+if grep -q 'source.*cargo/env.fish' ~/.config/fish/config.fish; then
+  sed -i '' '/source.*cargo\/env\.fish/d' ~/.config/fish/config.fish
+  echo "OK: removed broken cargo env.fish source line"
+fi
 
 # Starship
 mkdir -p ~/.config
