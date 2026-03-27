@@ -14,12 +14,17 @@ fi
 echo "OK: macOS $(sw_vers -productVersion)"
 ```
 
-STOP_IF_NO_BREW:
+INSTALL_BREW_IF_MISSING:
 ```bash
 if ! command -v brew &>/dev/null; then
-  echo "Homebrew not found. Install it first:"
-  echo '  /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"'
-  exit 1
+  echo "Homebrew not found — installing..."
+  /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+  # Add brew to PATH for Apple Silicon (the installer prints this but doesn't apply it in the current shell)
+  if [[ -f /opt/homebrew/bin/brew ]]; then
+    eval "$(/opt/homebrew/bin/brew shellenv)"
+  elif [[ -f /usr/local/bin/brew ]]; then
+    eval "$(/usr/local/bin/brew shellenv)"
+  fi
 fi
 echo "OK: brew $(brew --version | head -1)"
 ```
