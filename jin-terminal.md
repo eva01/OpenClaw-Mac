@@ -41,14 +41,39 @@ echo "OK: brew $(brew --version | head -1)"
 ## STEP 1 — INSTALL TOOLS
 
 ```bash
+# Terminal + shell
 brew install --cask ghostty
-brew install fish starship eza fastfetch fnm jq
+brew install --cask font-meslo-lg-nerd-font
+brew install fish starship eza fastfetch
+
+# Runtimes + package managers
+brew install fnm uv rustup
 brew install eva01/tap/ccswitch
+
+# CLI tools
+brew install gh jq
 ```
 
-Verify:
+Install a Node LTS version via fnm:
 ```bash
-for tool in fish starship eza fastfetch fnm jq ccs; do
+fnm install --lts
+fnm use --lts
+node --version   # confirm
+```
+
+Initialise rustup (sets up cargo, rustc):
+```bash
+rustup-init -y --no-modify-path
+```
+
+Install pnpm via npm (after Node is available):
+```bash
+npm install -g pnpm
+```
+
+Verify all tools:
+```bash
+for tool in fish starship eza fastfetch fnm node uv rustc cargo pnpm gh jq ccs; do
   command -v $tool &>/dev/null && echo "OK: $tool $(${tool} --version 2>/dev/null | head -1)" || echo "FAIL: $tool not found"
 done
 ghostty --version 2>/dev/null && echo "OK: ghostty" || echo "NOTE: ghostty is a GUI app — open it from /Applications"
@@ -107,11 +132,6 @@ curl -fsSL "$REPO/ghostty/config" -o ~/.config/ghostty/config
 echo "OK: ghostty config installed (MesloLGS NF, Catppuccin Mocha)"
 ```
 
-NOTE: ghostty config sets `font-family = MesloLGS NF`. Install the font if not present:
-```bash
-brew install --cask font-meslo-lg-nerd-font
-```
-
 ---
 
 ## STEP 4 — CCS FIRST-TIME SETUP
@@ -143,17 +163,17 @@ ccs rate-setup   # installs PreToolUse hook at 80% threshold
 echo $SHELL   # should be /opt/homebrew/bin/fish (after restart)
 
 # Tools
-fish --version
-starship --version
-eza --version
-fastfetch --version
-fnm --version
-ccs --version
+for tool in fish starship eza fastfetch fnm node uv rustc cargo pnpm gh jq ccs; do
+  command -v $tool &>/dev/null && echo "OK: $tool" || echo "FAIL: $tool"
+done
 
 # Configs
-test -f ~/.config/fish/config.fish    && echo "OK: fish config" || echo "MISSING: fish config"
+test -f ~/.config/fish/config.fish    && echo "OK: fish config"    || echo "MISSING: fish config"
 test -f ~/.config/starship.toml       && echo "OK: starship config" || echo "MISSING: starship config"
-test -f ~/.config/ghostty/config      && echo "OK: ghostty config" || echo "MISSING: ghostty config"
+test -f ~/.config/ghostty/config      && echo "OK: ghostty config"  || echo "MISSING: ghostty config"
+
+# No broken cargo line in fish config
+grep -q 'source.*cargo/env.fish' ~/.config/fish/config.fish && echo "WARN: cargo env.fish line still present" || echo "OK: fish config clean"
 
 # ccs
 ccs ls   # should list at least 1 account
@@ -164,12 +184,15 @@ ccs ls   # should list at least 1 account
 ## CHECKLIST
 
 ```
-[ ] brew install --cask ghostty
-[ ] brew install fish starship eza fastfetch fnm jq
+[ ] brew install --cask ghostty font-meslo-lg-nerd-font
+[ ] brew install fish starship eza fastfetch fnm uv rustup gh jq
 [ ] brew install eva01/tap/ccswitch
+[ ] fnm install --lts && fnm use --lts
+[ ] rustup-init -y --no-modify-path
+[ ] npm install -g pnpm
 [ ] fish added to /etc/shells + set as default (chsh)
 [ ] configs pulled: fish, starship, ghostty
-[ ] font-meslo-lg-nerd-font installed
+[ ] cargo env.fish line removed from fish config (auto-fixed in Step 3)
 [ ] ccs add (at least one account saved)
 [ ] terminal restarted — fish prompt with starship active
 ```
@@ -182,9 +205,10 @@ Each block is independent — skip anything you want to keep.
 
 ```bash
 # 1. Remove tools
-brew uninstall fish starship eza fastfetch fnm jq
+brew uninstall fish starship eza fastfetch fnm uv rustup gh jq
 brew uninstall eva01/tap/ccswitch
-brew uninstall --cask ghostty
+npm uninstall -g pnpm
+brew uninstall --cask ghostty font-meslo-lg-nerd-font
 
 # 2. Restore default shell (zsh)
 chsh -s /bin/zsh
@@ -207,7 +231,9 @@ brew uninstall --cask font-meslo-lg-nerd-font
 
 Verify clean:
 ```bash
-command -v fish starship eza ccs 2>/dev/null | head  # should return nothing
+for tool in fish starship eza fastfetch fnm node uv rustc pnpm gh ccs; do
+  command -v $tool &>/dev/null && echo "STILL PRESENT: $tool" || echo "removed: $tool"
+done
 echo $SHELL   # should be /bin/zsh
 ```
 
