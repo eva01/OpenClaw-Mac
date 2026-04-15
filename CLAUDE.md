@@ -84,6 +84,24 @@ curl -fsSL https://openclaw.ai/install.sh | bash
 
 sharp_build_error_fix: `SHARP_IGNORE_GLOBAL_LIBVIPS=1 npm install -g openclaw@latest`
 
+### Mac companion app
+
+After OpenClaw is installed, download and open the companion app so the user can drag it into Applications:
+
+```bash
+DMG_URL="https://github.com/openclaw/openclaw/releases/download/v2026.4.14-beta.1/OpenClaw-2026.4.14-beta.1.dmg"
+DMG_PATH="/tmp/OpenClaw.dmg"
+curl -L "$DMG_URL" -o "$DMG_PATH"
+hdiutil attach "$DMG_PATH" -nobrowse
+open /Volumes/OpenClaw/
+```
+
+Finder will open — drag **OpenClaw.app** into **Applications**, then eject:
+
+```bash
+hdiutil detach /Volumes/OpenClaw 2>/dev/null || true
+```
+
 ### First-time setup — run the interactive wizard
 
 OpenClaw's onboarding wizard walks you through auth, gateway port, and daemon install. **Run this in your terminal** (not via an AI agent — it requires you to read prompts and make choices):
@@ -524,6 +542,7 @@ prereq: brew, node>=22, python3, pm2, huggingface-cli
 3a. git -c http.version=HTTP/1.1 clone --depth 1 https://github.com/Blaizzy/mlx-vlm.git /tmp/mlx-vlm
 3b. pip install /tmp/mlx-vlm mlx-lm torch torchvision
 4.  curl -fsSL https://openclaw.ai/install.sh | bash && openclaw onboard --install-daemon
+4b. [optional mac app] curl -L "https://github.com/openclaw/openclaw/releases/download/v2026.4.14-beta.1/OpenClaw-2026.4.14-beta.1.dmg" -o /tmp/OpenClaw.dmg && hdiutil attach /tmp/OpenClaw.dmg -nobrowse && open /Volumes/OpenClaw/
 5.  mkdir -p ~/.openclaw && [ -f ~/.openclaw/openclaw.json ] || echo '{}' > ~/.openclaw/openclaw.json
 6.  lsof -i :10002 && lsof -i :10012  # must be empty
 7.  pm2 start [model server — pick ONE block from Step 3] && pm2 save
