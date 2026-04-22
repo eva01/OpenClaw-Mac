@@ -58,13 +58,19 @@ BOT_TOKEN="123456789:ABCdef..."    # replace with actual token
 DM_POLICY="pairing"               # or "open"
 GROUP_POLICY="open"               # or "allowlist" or "disabled"
 
-# Guard: ensure placeholders are replaced
-[[ "$BOT_TOKEN" == "123456789:ABCdef..."* ]] && { echo "FAIL: BOT_TOKEN not set — replace the placeholder"; exit 1; }
+# Guard: ensure placeholder is replaced and token is not empty
+[[ "$BOT_TOKEN" == "123456789:ABCdef..."* || -z "$BOT_TOKEN" ]] && { echo "FAIL: BOT_TOKEN not set — replace the placeholder"; exit 1; }
 
-# Validate token with Telegram API
-RESPONSE=$(curl -sf "https://api.telegram.org/bot${BOT_TOKEN}/getMe" || true)
+# Validate token with Telegram API (no -f so we get the body on failure too)
+RESPONSE=$(curl -s "https://api.telegram.org/bot${BOT_TOKEN}/getMe" || true)
 if [[ -z "$RESPONSE" ]]; then
-  echo "FAIL: Could not reach Telegram API — check token and internet connection"
+  echo "FAIL: Could not reach Telegram API — check internet connection"
+  exit 1
+fi
+OK=$(echo "$RESPONSE" | python3 -c "import sys,json; print(json.load(sys.stdin).get('ok', False))" 2>/dev/null || echo "false")
+if [[ "$OK" != "True" ]]; then
+  DESC=$(echo "$RESPONSE" | python3 -c "import sys,json; print(json.load(sys.stdin).get('description','unknown error'))" 2>/dev/null || echo "unknown error")
+  echo "FAIL: Telegram rejected token — $DESC"
   exit 1
 fi
 BOT_USERNAME=$(echo "$RESPONSE" | python3 -c "import sys,json; print(json.load(sys.stdin)['result']['username'])" 2>/dev/null || echo "unknown")
@@ -147,7 +153,7 @@ if (-not (Test-Path $configFile)) { '{}' | Set-Content -Encoding UTF8 $configFil
 '@ | Set-Content -Encoding UTF8 "$env:TEMP\tg-static.json"
 
 # Inject user values safely via jq --arg (handles special chars in token)
-jq --arg token $BOT_TOKEN --arg dmp $DM_POLICY --arg grp $GROUP_POLICY `
+jq --arg token "$BOT_TOKEN" --arg dmp "$DM_POLICY" --arg grp "$GROUP_POLICY" `
   '.channels.telegram.botToken = $token | .channels.telegram.dmPolicy = $dmp | .channels.telegram.groupPolicy = $grp' `
   "$env:TEMP\tg-static.json" | Set-Content -Encoding UTF8 "$env:TEMP\tg-patch.json"
 

@@ -61,8 +61,12 @@ command -v openclaw &>/dev/null \
   || echo "FAIL: openclaw not installed — Step 3 will install"
 
 # Gateway
-openclaw gateway status 2>/dev/null | grep -qi "running" \
-  && echo "PASS: gateway running" || echo "FAIL: gateway not running — Step 6 will start"
+if command -v openclaw &>/dev/null; then
+  openclaw gateway status 2>/dev/null | grep -qi "running" \
+    && echo "PASS: gateway running" || echo "FAIL: gateway not running — Step 6 will start"
+else
+  echo "SKIP: gateway check skipped — openclaw not installed"
+fi
 
 # Port 18789 — must be free before onboarding
 lsof -i :18789 | grep -q LISTEN \
@@ -104,7 +108,7 @@ Manual download (requires Apple ID sign-in): `https://developer.apple.com/downlo
 if command -v brew &>/dev/null; then
   echo "SKIP: brew already installed"
 else
-  /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+  NONINTERACTIVE=1 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
   # Apply to current session
   if [[ -f /opt/homebrew/bin/brew ]]; then
     eval "$(/opt/homebrew/bin/brew shellenv)"
@@ -417,8 +421,11 @@ BASE=$(jq -r '.env.BASE_URL // "https://api.ilmu.ai/v1 (default)"' ~/.openclaw/o
 echo "INFO: BASE_URL=$BASE"
 openclaw gateway status 2>&1 | grep -qi "running" && echo "PASS: gateway running" || echo "FAIL: not running"
 RESULT=$(openclaw infer model run --model "custom-api-ilmu-ai/nemo-super" --prompt "Say hi." 2>&1)
-[[ -n "$RESULT" ]] && ! echo "$RESULT" | grep -qi "error\|fail" \
-  && echo "PASS: inference OK — $RESULT" || echo "FAIL: inference failed — $RESULT"
+if [[ $? -eq 0 ]]; then
+  echo "PASS: inference OK — $RESULT"
+else
+  echo "FAIL: inference failed — $RESULT"
+fi
 ```
 
 ---

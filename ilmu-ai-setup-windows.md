@@ -247,14 +247,17 @@ if (-not (Test-Path $configFile)) { '{}' | Set-Content -Encoding UTF8 $configFil
 '@ | Set-Content -Encoding UTF8 "$env:TEMP\ilmu-static.json"
 
 # Step 2: inject API key and base URL safely via jq --arg (handles $, ", \ in key values)
-jq --arg key "$ILMU_KEY" --arg base "$ILMU_BASE" '. + {"env": {"ILMU_API_KEY": $key, "BASE_URL": $base}}' `
-  "$env:TEMP\ilmu-static.json" | Set-Content -Encoding UTF8 "$env:TEMP\ilmu-patch.json"
+# Capture output before writing so $LASTEXITCODE reflects jq, not Set-Content
+$patchJson = jq --arg key "$ILMU_KEY" --arg base "$ILMU_BASE" '. + {"env": {"ILMU_API_KEY": $key, "BASE_URL": $base}}' `
+  "$env:TEMP\ilmu-static.json"
+if ($LASTEXITCODE -ne 0) { Write-Host "FAIL: jq patch failed"; exit 1 }
+$patchJson | Set-Content -Encoding UTF8 "$env:TEMP\ilmu-patch.json"
 
 # Step 3: merge patch into existing config
-jq -s '.[0] * .[1]' $configFile "$env:TEMP\ilmu-patch.json" | Set-Content -Encoding UTF8 "$env:TEMP\openclaw-merged.json"
+$mergedJson = jq -s '.[0] * .[1]' $configFile "$env:TEMP\ilmu-patch.json"
 
 if ($LASTEXITCODE -eq 0) {
-  Move-Item -Force "$env:TEMP\openclaw-merged.json" $configFile
+  $mergedJson | Set-Content -Encoding UTF8 $configFile
   # Restrict permissions: current user only
   icacls $configFile /inheritance:r /grant:r "${env:USERNAME}:(R,W)" | Out-Null
   Write-Host "PASS: config written and permissions restricted"
@@ -346,7 +349,7 @@ Write-Host "INFO: BASE_URL=$base"
 $s = openclaw gateway status 2>&1
 if ($s -match "running") { Write-Host "PASS: gateway running" } else { Write-Host "FAIL: not running" }
 $result = openclaw infer model run --model "custom-api-ilmu-ai/nemo-super" --prompt "Say hi." 2>&1
-if ($result -and $result -notmatch "error|fail") { Write-Host "PASS: inference OK — $result" }
+if ($LASTEXITCODE -eq 0) { Write-Host "PASS: inference OK — $result" }
 else { Write-Host "FAIL: inference failed — $result" }
 ```
 

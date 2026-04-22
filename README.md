@@ -61,8 +61,12 @@ command -v openclaw &>/dev/null \
   || echo "FAIL: openclaw not installed — Step 3 will install"
 
 # Gateway
-openclaw gateway status 2>/dev/null | grep -qi "running" \
-  && echo "PASS: gateway running" || echo "FAIL: gateway not running — Step 5 will start"
+if command -v openclaw &>/dev/null; then
+  openclaw gateway status 2>/dev/null | grep -qi "running" \
+    && echo "PASS: gateway running" || echo "FAIL: gateway not running — Step 5 will start"
+else
+  echo "SKIP: gateway check skipped — openclaw not installed"
+fi
 ```
 
 If `FAIL: Xcode CLT not installed`:
@@ -111,7 +115,7 @@ if ($s -match "running") { Write-Host "PASS: gateway running" } else { Write-Hos
 ```bash
 # Homebrew
 if ! command -v brew &>/dev/null; then
-  /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+  NONINTERACTIVE=1 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
   eval "$(/opt/homebrew/bin/brew shellenv 2>/dev/null || /usr/local/bin/brew shellenv)"
 fi
 echo "PASS: brew $(brew --version | head -1)"
@@ -128,6 +132,15 @@ echo "PASS: jq=$(jq --version)"
 ### Windows
 
 ```powershell
+# Execution policy — required for openclaw install script to run
+$policy = Get-ExecutionPolicy -Scope CurrentUser
+if ($policy -in @("Restricted","Undefined")) {
+  Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser -Force
+  Write-Host "PASS: execution policy set to RemoteSigned"
+} else {
+  Write-Host "SKIP: execution policy already allows scripts ($policy)"
+}
+
 # Node
 if (-not (Get-Command node -EA SilentlyContinue)) {
   winget install --id OpenJS.NodeJS.LTS --accept-source-agreements --accept-package-agreements
@@ -302,12 +315,15 @@ if ($ILMU_KEY -eq "sk-..." -or -not $ILMU_KEY) { Write-Host "FAIL: ILMU_KEY plac
 '@ | Set-Content -Encoding UTF8 "$env:TEMP\ilmu-static.json"
 
 # Inject key and base URL safely via jq --arg (handles $, ", \ in values)
-jq --arg key "$ILMU_KEY" --arg base "$ILMU_BASE" '. + {"env": {"ILMU_API_KEY": $key, "BASE_URL": $base}}' `
-  "$env:TEMP\ilmu-static.json" | Set-Content -Encoding UTF8 "$env:TEMP\ilmu-patch.json"
+# Capture output before writing so $LASTEXITCODE reflects jq, not Set-Content
+$patchJson = jq --arg key "$ILMU_KEY" --arg base "$ILMU_BASE" '. + {"env": {"ILMU_API_KEY": $key, "BASE_URL": $base}}' `
+  "$env:TEMP\ilmu-static.json"
+if ($LASTEXITCODE -ne 0) { Write-Host "FAIL: jq patch failed"; exit 1 }
+$patchJson | Set-Content -Encoding UTF8 "$env:TEMP\ilmu-patch.json"
 
-jq -s '.[0] * .[1]' $configFile "$env:TEMP\ilmu-patch.json" | Set-Content -Encoding UTF8 "$env:TEMP\openclaw-merged.json"
+$mergedJson = jq -s '.[0] * .[1]' $configFile "$env:TEMP\ilmu-patch.json"
 if ($LASTEXITCODE -eq 0) {
-  Move-Item -Force "$env:TEMP\openclaw-merged.json" $configFile
+  $mergedJson | Set-Content -Encoding UTF8 $configFile
   icacls $configFile /inheritance:r /grant:r "${env:USERNAME}:(R,W)" | Out-Null
   Write-Host "PASS: config written and permissions restricted"
 } else { Write-Host "FAIL: jq merge failed"; exit 1 }
