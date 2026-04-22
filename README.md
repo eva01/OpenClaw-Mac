@@ -26,11 +26,11 @@ CONSTRAINTS:
 
 | id | name | context | max tokens |
 |----|------|---------|------------|
-| `nemo-super` | ILMU Nemo Super | 256k | 128k |
+| `ilmu-nemo-super` | ILMU Nemo Super | 256k | 128k |
 | `ilmu-nemo-nano` | ILMU Nemo Nano | 256k | 128k |
 
-Default: `nemo-super` — Base URL: `https://api.ilmu.ai/v1`
-Staging override: set `BASE_URL` in the `env` section of openclaw.json (Step 2)
+Default primary: `ilmu-nemo-super` — Base URL: `https://api.ilmu.ai/v1`
+Model IDs are discovered from the API in Step 2 — they may differ between environments.
 
 ---
 
@@ -252,18 +252,14 @@ else { Write-Host "FAIL: gateway not running — run: openclaw doctor"; exit 1 }
 
 ## STEP 2 — CONNECT ilmu.ai
 
-The API key is stored inside `openclaw.json` under `"env"` — OpenClaw injects it at runtime via template variables. No shell profile changes needed.
+The API key and base URL are written directly into the provider config in `openclaw.json`.
 
-PAUSE: Ask the user for:
-1. Their ilmu.ai API key (starts with `sk-`)
-2. Base URL — press Enter for production default (`https://api.ilmu.ai/v1`), or provide staging URL
-
-Then substitute into the block for their OS below and run it.
+PAUSE: Ask the user for their ilmu.ai API key (starts with `sk-`). Ask separately for their base URL — production default is `https://api.ilmu.ai/v1`, or they can provide a staging URL. Substitute both into the block for their OS below, then run it.
 
 ### macOS
 
 ```bash
-# Set from user input:
+# Set from user input — ask for these separately:
 ILMU_KEY="sk-..."                       # replace with actual key
 ILMU_BASE="https://api.ilmu.ai/v1"     # replace with staging URL if needed
 
@@ -274,17 +270,30 @@ ILMU_BASE="https://api.ilmu.ai/v1"     # replace with staging URL if needed
 mkdir -p ~/.openclaw
 [[ -f ~/.openclaw/openclaw.json ]] || echo '{}' > ~/.openclaw/openclaw.json
 
-jq --arg key "$ILMU_KEY" --arg base "$ILMU_BASE" '. * {
-  "env": {
-    "ILMU_API_KEY": $key,
-    "BASE_URL": $base
-  },
+# Discover available model IDs from the API
+MODELS_JSON=$(curl -s "$ILMU_BASE/models" -H "Authorization: Bearer $ILMU_KEY")
+if echo "$MODELS_JSON" | jq -e '.data' &>/dev/null; then
+  echo "INFO: available models:"
+  echo "$MODELS_JSON" | jq -r '.data[].id' | sed 's/^/  /'
+  MODEL_PRIMARY=$(echo "$MODELS_JSON" | jq -r '[.data[].id | select(test("nemo-super|super"))] | first // "ilmu-nemo-super"')
+  MODEL_NANO=$(echo "$MODELS_JSON"    | jq -r '[.data[].id | select(test("nemo-nano|nano"))]  | first // "ilmu-nemo-nano"')
+  echo "PASS: models selected — primary=$MODEL_PRIMARY nano=$MODEL_NANO"
+else
+  echo "WARN: could not query /models — using defaults (verify key and URL if inference fails)"
+  MODEL_PRIMARY="ilmu-nemo-super"
+  MODEL_NANO="ilmu-nemo-nano"
+fi
+
+# Write config — key and URL written directly into provider (template vars don't expand there)
+jq --arg key "$ILMU_KEY" --arg base "$ILMU_BASE" \
+   --arg mp "$MODEL_PRIMARY" --arg mn "$MODEL_NANO" '. * {
+  "env": { "ILMU_API_KEY": $key, "BASE_URL": $base },
   "agents": {
     "defaults": {
-      "model": { "primary": "<ENDPOINT_ID:-custom-api-ilmu-ai>/nemo-super" },
+      "model": { "primary": ("custom-api-ilmu-ai/" + $mp) },
       "models": {
-        "<ENDPOINT_ID:-custom-api-ilmu-ai>/nemo-super":     { "alias": "nemo-super",  "streaming": false },
-        "<ENDPOINT_ID:-custom-api-ilmu-ai>/ilmu-nemo-nano": { "alias": "nemo-nano",   "streaming": false }
+        ("custom-api-ilmu-ai/" + $mp): { "alias": "nemo-super", "streaming": false },
+        ("custom-api-ilmu-ai/" + $mn): { "alias": "nemo-nano",  "streaming": false }
       },
       "timeoutSeconds": 600
     }
@@ -292,13 +301,13 @@ jq --arg key "$ILMU_KEY" --arg base "$ILMU_BASE" '. * {
   "models": {
     "mode": "merge",
     "providers": {
-      "<ENDPOINT_ID:-custom-api-ilmu-ai>": {
-        "baseUrl": "<BASE_URL:-https://api.ilmu.ai/v1>",
+      "custom-api-ilmu-ai": {
+        "baseUrl": $base,
         "api": "openai-completions",
-        "apiKey": "<ILMU_API_KEY:->",
+        "apiKey": $key,
         "models": [
-          { "id": "nemo-super",     "name": "ILMU Nemo Super", "contextWindow": 256000, "maxTokens": 128000, "input": ["text"], "cost": {"input":0,"output":0,"cacheRead":0,"cacheWrite":0}, "reasoning": false },
-          { "id": "ilmu-nemo-nano", "name": "ILMU Nemo Nano",  "contextWindow": 256000, "maxTokens": 128000, "input": ["text"], "cost": {"input":0,"output":0,"cacheRead":0,"cacheWrite":0}, "reasoning": false }
+          { "id": $mp, "name": "ILMU Nemo Super", "contextWindow": 256000, "maxTokens": 128000, "input": ["text"], "cost": {"input":0,"output":0,"cacheRead":0,"cacheWrite":0}, "reasoning": false },
+          { "id": $mn, "name": "ILMU Nemo Nano",  "contextWindow": 256000, "maxTokens": 128000, "input": ["text"], "cost": {"input":0,"output":0,"cacheRead":0,"cacheWrite":0}, "reasoning": false }
         ]
       }
     }
@@ -309,40 +318,30 @@ jq --arg key "$ILMU_KEY" --arg base "$ILMU_BASE" '. * {
   && echo "PASS: config written" \
   || { echo "FAIL: config write failed"; exit 1; }
 
-# Verify key is in config
-KEY=$(jq -r '.env.ILMU_API_KEY // empty' ~/.openclaw/openclaw.json)
-[[ -n "$KEY" ]] && echo "PASS: API key present in config" || echo "FAIL: API key missing from config"
+KEY=$(jq -r '.models.providers["custom-api-ilmu-ai"].apiKey // empty' ~/.openclaw/openclaw.json)
+[[ -n "$KEY" ]] && echo "PASS: API key present in provider config" || echo "FAIL: API key missing from provider config"
 
-# Restart gateway to apply config
+# Restart gateway and test
 openclaw gateway restart && sleep 2
 openclaw gateway status 2>&1 | grep -qi "running" \
   && echo "PASS: gateway running" \
   || { echo "FAIL: gateway not running — run: openclaw doctor"; exit 1; }
 
-# Test inference
-echo "INFO: running inference test..."
-RESULT=$(openclaw infer model run --model "custom-api-ilmu-ai/nemo-super" --prompt "Say hi." 2>&1)
-if [[ $? -eq 0 ]]; then
-  echo "PASS: inference OK — $RESULT"
-else
-  echo "FAIL: inference failed — $RESULT"
-  echo "INFO: run direct API test below to isolate key vs OpenClaw issue"
-fi
-```
+echo "INFO: testing via OpenClaw..."
+openclaw infer model run --model "custom-api-ilmu-ai/$MODEL_PRIMARY" --prompt "Say hi." 2>&1
 
-Direct API test (bypasses OpenClaw — use this if inference fails):
-```bash
-curl -s -X POST "$(jq -r '.env.BASE_URL // "https://api.ilmu.ai/v1"' ~/.openclaw/openclaw.json)/chat/completions" \
+echo "INFO: testing directly against API (bypasses OpenClaw)..."
+curl -s -X POST "$ILMU_BASE/chat/completions" \
   -H "Content-Type: application/json" \
-  -H "Authorization: Bearer $(jq -r '.env.ILMU_API_KEY' ~/.openclaw/openclaw.json)" \
-  -d '{"model":"nemo-super","messages":[{"role":"user","content":"Say hi."}],"max_tokens":50,"stream":false}' \
-  | jq -r '.choices[0].message.content'
+  -H "Authorization: Bearer $ILMU_KEY" \
+  -d "{\"model\":\"$MODEL_PRIMARY\",\"messages\":[{\"role\":\"user\",\"content\":\"Say hi.\"}],\"max_tokens\":50,\"stream\":false}" \
+  | jq -r '.choices[0].message.content // .error.message // .'
 ```
 
 ### Windows
 
 ```powershell
-# Set from user input:
+# Set from user input — ask for these separately:
 $ILMU_KEY  = "sk-..."                   # replace with actual key
 $ILMU_BASE = "https://api.ilmu.ai/v1"  # replace with staging URL if needed
 
@@ -355,75 +354,66 @@ $configFile = "$configDir\openclaw.json"
 if (-not (Test-Path $configDir))  { New-Item -ItemType Directory $configDir | Out-Null }
 if (-not (Test-Path $configFile)) { '{}' | Set-Content -Encoding UTF8 $configFile }
 
-# Write static config (single-quoted here-string — safe for template variables)
-@'
-{
-  "agents": {
-    "defaults": {
-      "model": { "primary": "<ENDPOINT_ID:-custom-api-ilmu-ai>/nemo-super" },
-      "models": {
-        "<ENDPOINT_ID:-custom-api-ilmu-ai>/nemo-super":     { "alias": "nemo-super",  "streaming": false },
-        "<ENDPOINT_ID:-custom-api-ilmu-ai>/ilmu-nemo-nano": { "alias": "nemo-nano",   "streaming": false }
-      },
-      "timeoutSeconds": 600
-    }
-  },
-  "models": {
-    "mode": "merge",
-    "providers": {
-      "<ENDPOINT_ID:-custom-api-ilmu-ai>": {
-        "baseUrl": "<BASE_URL:-https://api.ilmu.ai/v1>",
-        "api": "openai-completions",
-        "apiKey": "<ILMU_API_KEY:->",
-        "models": [
-          { "id": "nemo-super",     "name": "ILMU Nemo Super", "contextWindow": 256000, "maxTokens": 128000, "input": ["text"], "cost": {"input":0,"output":0,"cacheRead":0,"cacheWrite":0}, "reasoning": false },
-          { "id": "ilmu-nemo-nano", "name": "ILMU Nemo Nano",  "contextWindow": 256000, "maxTokens": 128000, "input": ["text"], "cost": {"input":0,"output":0,"cacheRead":0,"cacheWrite":0}, "reasoning": false }
-        ]
-      }
-    }
-  }
+# Discover available model IDs from the API
+try {
+  $mr = Invoke-RestMethod -Uri "$ILMU_BASE/models" -Headers @{Authorization = "Bearer $ILMU_KEY"}
+  $MODEL_PRIMARY = ($mr.data | Where-Object { $_.id -match "nemo-super|super" } | Select-Object -First 1).id
+  $MODEL_NANO    = ($mr.data | Where-Object { $_.id -match "nemo-nano|nano" }   | Select-Object -First 1).id
+  if (-not $MODEL_PRIMARY) { $MODEL_PRIMARY = "ilmu-nemo-super" }
+  if (-not $MODEL_NANO)    { $MODEL_NANO    = "ilmu-nemo-nano"  }
+  Write-Host "PASS: models discovered — primary=$MODEL_PRIMARY nano=$MODEL_NANO"
+  Write-Host "INFO: available models:"; $mr.data.id | ForEach-Object { Write-Host "  $_" }
+} catch {
+  $MODEL_PRIMARY = "ilmu-nemo-super"; $MODEL_NANO = "ilmu-nemo-nano"
+  Write-Host "WARN: could not query /models — using defaults"
 }
-'@ | Set-Content -Encoding UTF8 "$env:TEMP\ilmu-static.json"
 
-# Inject key and base URL via jq --arg — capture output before writing so exit code is reliable
-$patchJson = jq --arg key "$ILMU_KEY" --arg base "$ILMU_BASE" '. + {"env": {"ILMU_API_KEY": $key, "BASE_URL": $base}}' `
-  "$env:TEMP\ilmu-static.json"
-if ($LASTEXITCODE -ne 0) { Write-Host "FAIL: jq patch failed"; exit 1 }
-$patchJson | Set-Content -Encoding UTF8 "$env:TEMP\ilmu-patch.json"
+# Write config — key and URL written directly into provider (template vars don't expand there)
+$mergedJson = jq --arg key "$ILMU_KEY" --arg base "$ILMU_BASE" `
+  --arg mp "$MODEL_PRIMARY" --arg mn "$MODEL_NANO" `
+  '{ "env": { "ILMU_API_KEY": $key, "BASE_URL": $base },
+     "agents": { "defaults": {
+       "model": { "primary": ("custom-api-ilmu-ai/" + $mp) },
+       "models": {
+         ("custom-api-ilmu-ai/" + $mp): { "alias": "nemo-super", "streaming": false },
+         ("custom-api-ilmu-ai/" + $mn): { "alias": "nemo-nano",  "streaming": false }
+       }, "timeoutSeconds": 600 } },
+     "models": { "mode": "merge", "providers": { "custom-api-ilmu-ai": {
+       "baseUrl": $base, "api": "openai-completions", "apiKey": $key,
+       "models": [
+         { "id": $mp, "name": "ILMU Nemo Super", "contextWindow": 256000, "maxTokens": 128000, "input": ["text"], "cost": {"input":0,"output":0,"cacheRead":0,"cacheWrite":0}, "reasoning": false },
+         { "id": $mn, "name": "ILMU Nemo Nano",  "contextWindow": 256000, "maxTokens": 128000, "input": ["text"], "cost": {"input":0,"output":0,"cacheRead":0,"cacheWrite":0}, "reasoning": false }
+       ] } } } }' $configFile
+if ($LASTEXITCODE -ne 0) { Write-Host "FAIL: jq failed"; exit 1 }
 
-$mergedJson = jq -s '.[0] * .[1]' $configFile "$env:TEMP\ilmu-patch.json"
+# Merge patch into existing config
+$patchFile = "$env:TEMP\ilmu-patch.json"
+$mergedJson | Set-Content -Encoding UTF8 $patchFile
+$finalJson = jq -s '.[0] * .[1]' $configFile $patchFile
 if ($LASTEXITCODE -eq 0) {
-  $mergedJson | Set-Content -Encoding UTF8 $configFile
+  $finalJson | Set-Content -Encoding UTF8 $configFile
   icacls $configFile /inheritance:r /grant:r "${env:USERNAME}:(R,W)" | Out-Null
   Write-Host "PASS: config written"
 } else { Write-Host "FAIL: jq merge failed"; exit 1 }
-Remove-Item -EA SilentlyContinue "$env:TEMP\ilmu-patch.json","$env:TEMP\ilmu-static.json"
+Remove-Item -EA SilentlyContinue $patchFile
 
-# Verify key is in config
-$key = jq -r '.env.ILMU_API_KEY // empty' $configFile
-if ($key) { Write-Host "PASS: API key present in config" } else { Write-Host "FAIL: API key missing" }
+$kcheck = jq -r '.models.providers["custom-api-ilmu-ai"].apiKey // empty' $configFile
+if ($kcheck) { Write-Host "PASS: API key present in provider config" } else { Write-Host "FAIL: API key missing" }
 
-# Restart gateway to apply config
+# Restart gateway and test
 openclaw gateway restart; Start-Sleep 2
 $s = openclaw gateway status 2>&1
 if ($s -match "running") { Write-Host "PASS: gateway running" }
 else { Write-Host "FAIL: gateway not running — run: openclaw doctor"; exit 1 }
 
-# Test inference
-Write-Host "INFO: running inference test..."
-$result = openclaw infer model run --model "custom-api-ilmu-ai/nemo-super" --prompt "Say hi." 2>&1
-if ($LASTEXITCODE -eq 0) { Write-Host "PASS: inference OK — $result" }
-else { Write-Host "FAIL: inference failed — $result"; Write-Host "INFO: run direct API test below to isolate key vs OpenClaw issue" }
-```
+Write-Host "INFO: testing via OpenClaw..."
+openclaw infer model run --model "custom-api-ilmu-ai/$MODEL_PRIMARY" --prompt "Say hi." 2>&1
 
-Direct API test (bypasses OpenClaw — use this if inference fails):
-```powershell
-$key  = jq -r '.env.ILMU_API_KEY' "$env:USERPROFILE\.openclaw\openclaw.json"
-$base = jq -r '.env.BASE_URL // "https://api.ilmu.ai/v1"' "$env:USERPROFILE\.openclaw\openclaw.json"
-Invoke-RestMethod -Uri "$base/chat/completions" `
+Write-Host "INFO: testing directly against API (bypasses OpenClaw)..."
+Invoke-RestMethod -Uri "$ILMU_BASE/chat/completions" `
   -Method POST -ContentType "application/json" `
-  -Headers @{ Authorization = "Bearer $key" } `
-  -Body '{"model":"nemo-super","messages":[{"role":"user","content":"Say hi."}],"max_tokens":50,"stream":false}' `
+  -Headers @{ Authorization = "Bearer $ILMU_KEY" } `
+  -Body "{`"model`":`"$MODEL_PRIMARY`",`"messages`":[{`"role`":`"user`",`"content`":`"Say hi.`"}],`"max_tokens`":50,`"stream`":false}" `
   | Select-Object -ExpandProperty choices | Select-Object -First 1 | ForEach-Object { $_.message.content }
 ```
 

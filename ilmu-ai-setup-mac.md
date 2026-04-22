@@ -22,11 +22,11 @@ CONSTRAINTS:
 
 | id | name | context | max tokens |
 |----|------|---------|------------|
-| `nemo-super` | ILMU Nemo Super | 256k | 128k |
+| `ilmu-nemo-super` | ILMU Nemo Super | 256k | 128k |
 | `ilmu-nemo-nano` | ILMU Nemo Nano | 256k | 128k |
 
-Default: `nemo-super` — Base URL: `https://api.ilmu.ai/v1`
-Staging: set `BASE_URL` under `env` in openclaw.json (Step 5)
+Default primary: `ilmu-nemo-super` — Base URL: `https://api.ilmu.ai/v1`
+Model IDs are discovered from the API in Step 5 — they may differ between environments.
 
 ---
 
@@ -236,17 +236,30 @@ ILMU_BASE="https://api.ilmu.ai/v1"
 mkdir -p ~/.openclaw
 [[ -f ~/.openclaw/openclaw.json ]] || echo '{}' > ~/.openclaw/openclaw.json
 
-jq --arg key "$ILMU_KEY" --arg base "$ILMU_BASE" '. * {
-  "env": {
-    "ILMU_API_KEY": $key,
-    "BASE_URL": $base
-  },
+# Discover available model IDs from the API
+MODELS_JSON=$(curl -s "$ILMU_BASE/models" -H "Authorization: Bearer $ILMU_KEY")
+if echo "$MODELS_JSON" | jq -e '.data' &>/dev/null; then
+  echo "INFO: available models:"
+  echo "$MODELS_JSON" | jq -r '.data[].id' | sed 's/^/  /'
+  MODEL_PRIMARY=$(echo "$MODELS_JSON" | jq -r '[.data[].id | select(test("nemo-super|super"))] | first // "ilmu-nemo-super"')
+  MODEL_NANO=$(echo "$MODELS_JSON"    | jq -r '[.data[].id | select(test("nemo-nano|nano"))]  | first // "ilmu-nemo-nano"')
+  echo "PASS: models selected — primary=$MODEL_PRIMARY nano=$MODEL_NANO"
+else
+  echo "WARN: could not query /models — using defaults (verify key and URL if inference fails)"
+  MODEL_PRIMARY="ilmu-nemo-super"
+  MODEL_NANO="ilmu-nemo-nano"
+fi
+
+# Write config — key and URL written directly into provider (template vars don't expand there)
+jq --arg key "$ILMU_KEY" --arg base "$ILMU_BASE" \
+   --arg mp "$MODEL_PRIMARY" --arg mn "$MODEL_NANO" '. * {
+  "env": { "ILMU_API_KEY": $key, "BASE_URL": $base },
   "agents": {
     "defaults": {
-      "model": { "primary": "<ENDPOINT_ID:-custom-api-ilmu-ai>/nemo-super" },
+      "model": { "primary": ("custom-api-ilmu-ai/" + $mp) },
       "models": {
-        "<ENDPOINT_ID:-custom-api-ilmu-ai>/nemo-super":     { "alias": "nemo-super",  "streaming": false },
-        "<ENDPOINT_ID:-custom-api-ilmu-ai>/ilmu-nemo-nano": { "alias": "nemo-nano",   "streaming": false }
+        ("custom-api-ilmu-ai/" + $mp): { "alias": "nemo-super", "streaming": false },
+        ("custom-api-ilmu-ai/" + $mn): { "alias": "nemo-nano",  "streaming": false }
       },
       "timeoutSeconds": 600
     }
@@ -254,27 +267,13 @@ jq --arg key "$ILMU_KEY" --arg base "$ILMU_BASE" '. * {
   "models": {
     "mode": "merge",
     "providers": {
-      "<ENDPOINT_ID:-custom-api-ilmu-ai>": {
-        "baseUrl": "<BASE_URL:-https://api.ilmu.ai/v1>",
+      "custom-api-ilmu-ai": {
+        "baseUrl": $base,
         "api": "openai-completions",
-        "apiKey": "<ILMU_API_KEY:->",
+        "apiKey": $key,
         "models": [
-          {
-            "id": "nemo-super",
-            "name": "ILMU Nemo Super",
-            "contextWindow": 256000, "maxTokens": 128000,
-            "input": ["text"],
-            "cost": {"input":0,"output":0,"cacheRead":0,"cacheWrite":0},
-            "reasoning": false
-          },
-          {
-            "id": "ilmu-nemo-nano",
-            "name": "ILMU Nemo Nano",
-            "contextWindow": 256000, "maxTokens": 128000,
-            "input": ["text"],
-            "cost": {"input":0,"output":0,"cacheRead":0,"cacheWrite":0},
-            "reasoning": false
-          }
+          { "id": $mp, "name": "ILMU Nemo Super", "contextWindow": 256000, "maxTokens": 128000, "input": ["text"], "cost": {"input":0,"output":0,"cacheRead":0,"cacheWrite":0}, "reasoning": false },
+          { "id": $mn, "name": "ILMU Nemo Nano",  "contextWindow": 256000, "maxTokens": 128000, "input": ["text"], "cost": {"input":0,"output":0,"cacheRead":0,"cacheWrite":0}, "reasoning": false }
         ]
       }
     }
@@ -286,9 +285,9 @@ jq --arg key "$ILMU_KEY" --arg base "$ILMU_BASE" '. * {
   || { echo "FAIL: config write failed"; exit 1; }
 
 # Verify
-jq -r '.env.ILMU_API_KEY // empty' ~/.openclaw/openclaw.json | grep -q . \
-  && echo "PASS: API key present in config" \
-  || echo "FAIL: API key missing from config"
+jq -r '.models.providers["custom-api-ilmu-ai"].apiKey // empty' ~/.openclaw/openclaw.json | grep -q . \
+  && echo "PASS: API key present in provider config" \
+  || echo "FAIL: API key missing from provider config"
 ```
 
 ---
@@ -315,11 +314,17 @@ fi
 ## STEP 7 — TEST
 
 ```bash
+KEY=$(jq -r '.models.providers["custom-api-ilmu-ai"].apiKey' ~/.openclaw/openclaw.json)
+BASE=$(jq -r '.models.providers["custom-api-ilmu-ai"].baseUrl' ~/.openclaw/openclaw.json)
+MP=$(jq -r '.models.providers["custom-api-ilmu-ai"].models[0].id' ~/.openclaw/openclaw.json)
+MN=$(jq -r '.models.providers["custom-api-ilmu-ai"].models[1].id' ~/.openclaw/openclaw.json)
+
 # Via OpenClaw (WebSocket — primary path)
-openclaw infer model run --model "custom-api-ilmu-ai/nemo-super" --prompt "Say hi."
+echo "INFO: testing via OpenClaw..."
+openclaw infer model run --model "custom-api-ilmu-ai/$MP" --prompt "Say hi."
 
 # All models
-for model in nemo-super ilmu-nemo-nano; do
+for model in "$MP" "$MN"; do
   echo -n "custom-api-ilmu-ai/$model: "
   openclaw infer model run --model "custom-api-ilmu-ai/$model" --prompt "Say hi." 2>&1
   echo
@@ -329,14 +334,15 @@ done
 Direct API test (bypasses OpenClaw — isolates key/URL issues):
 
 ```bash
-KEY=$(jq -r '.env.ILMU_API_KEY' ~/.openclaw/openclaw.json)
-BASE=$(jq -r '.env.BASE_URL // "https://api.ilmu.ai/v1"' ~/.openclaw/openclaw.json)
+KEY=$(jq -r '.models.providers["custom-api-ilmu-ai"].apiKey' ~/.openclaw/openclaw.json)
+BASE=$(jq -r '.models.providers["custom-api-ilmu-ai"].baseUrl' ~/.openclaw/openclaw.json)
+MP=$(jq -r '.models.providers["custom-api-ilmu-ai"].models[0].id' ~/.openclaw/openclaw.json)
 
 curl -s -X POST "$BASE/chat/completions" \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer $KEY" \
-  -d '{"model":"nemo-super","messages":[{"role":"user","content":"Say hi."}],"max_tokens":50,"stream":false}' \
-  | python3 -c "import sys,json; print(json.load(sys.stdin)['choices'][0]['message']['content'])"
+  -d "{\"model\":\"$MP\",\"messages\":[{\"role\":\"user\",\"content\":\"Say hi.\"}],\"max_tokens\":50,\"stream\":false}" \
+  | jq -r '.choices[0].message.content // .error.message // .'
 ```
 
 ---
