@@ -42,19 +42,15 @@ echo "OK: Apple Silicon confirmed — $chip"
 |----|--------|--------|----------|-------|------|
 | GLM-4.7-flash | 30B (A3B) | mlx_lm | tool-calling, agent tasks | 8bit | ~18GB |
 | kimi-linear | 48B (A3B) | mlx_lm | long-context, fast prefill | 8bit | ~28GB |
-| Qwen3.5-35B-A3B | 35B (A3B) | mlx_vlm | multimodal, fast | 8bit | ~20GB |
-| Qwen3.5-27B | 27B dense | mlx_vlm | multimodal, better agent than 35B-A3B | 5bit | ~18GB |
-| Qwen3.5-9B | 9B | mlx_vlm | multimodal, low memory | 8bit | ~10GB |
 
-engine_rule: mlx_vlm=multimodal+tool-calling (Qwen3.5 series); mlx_lm=text-only+faster (GLM/kimi)
+engine_rule: mlx_vlm=multimodal+tool-calling; mlx_lm=text-only+faster (GLM/kimi)
 model_id_in_config: mlx_vlm uses full filesystem path as id; mlx_lm uses model name string only
-recommend: GLM-4.7-flash for agent/tool-calling; kimi-linear for long docs; Qwen3.5-9B for multimodal+low RAM
+recommend: GLM-4.7-flash for agent/tool-calling; kimi-linear for long docs
 
 ## STEP 0 — DOWNLOAD MODEL
 
 ```bash
 huggingface-cli download mlx-community/<MODEL_ID> --local-dir ~/models/<MODEL_ID>
-# example: mlx-community/Qwen3.5-9B-8bit → ~/models/Qwen3.5-9B-8bit
 ```
 
 ## STEP 1 — VENV
@@ -144,9 +140,9 @@ NOTE: run only the block matching your chosen model. Check for port conflict bef
 lsof -i :10002  # or :10004 — must be empty; kill any existing process first
 ```
 
-mlx_vlm only (Qwen3.5 series):
+mlx_vlm only (multimodal model):
 ```bash
-pm2 start ~/models/mlx-venv/bin/python3 --name "qwen3.5-9b" --interpreter none \
+pm2 start ~/models/mlx-venv/bin/python3 --name "mlx-vlm-server" --interpreter none \
   -- -m mlx_vlm.server --host 0.0.0.0 --port 10002
 pm2 save
 ```
@@ -164,7 +160,7 @@ verify_model_server_healthy (run before Step 4):
 ```bash
 # mlx_vlm
 curl -sf http://127.0.0.1:10002/v1/models | python3 -c "import sys,json; print('OK:', json.load(sys.stdin))" \
-  || echo "FAIL: model server not ready — check: pm2 logs qwen3.5-9b"
+  || echo "FAIL: model server not ready — check: pm2 logs mlx-vlm-server"
 
 # mlx_lm
 curl -sf http://127.0.0.1:10004/v1/models | python3 -c "import sys,json; print('OK:', json.load(sys.stdin))" \
@@ -196,9 +192,9 @@ Check proxy port is free:
 lsof -i :10012  # or :10014 — must be empty
 ```
 
-mlx_vlm (Qwen3.5):
+mlx_vlm (multimodal):
 ```bash
-pm2 start ~/models/mlx-venv/bin/python3 --name "mlx-proxy-qwen" --interpreter none \
+pm2 start ~/models/mlx-venv/bin/python3 --name "mlx-proxy-vlm" --interpreter none \
   -- "$PROXY_SCRIPT" --host 0.0.0.0 --port 10012 --upstream http://127.0.0.1:10002
 pm2 save
 ```
@@ -228,38 +224,6 @@ CONFIG_RULES:
 - input → ["text","image"] for mlx_vlm; ["text"] for mlx_lm
 - all costs → 0
 - create file if missing: `mkdir -p ~/.openclaw && echo '{}' > ~/.openclaw/openclaw.json`
-
-Qwen3.5-9B (mlx_vlm):
-```json
-{
-  "models": {
-    "mode": "merge",
-    "providers": {
-      "local": {
-        "baseUrl": "http://127.0.0.1:10012",
-        "apiKey": "DEADBEEF",
-        "api": "openai-completions",
-        "models": [{
-          "id": "/Users/you/models/Qwen3.5-9B-8bit",
-          "name": "Qwen 3.5 9B",
-          "reasoning": false,
-          "input": ["text", "image"],
-          "cost": {"input":0,"output":0,"cacheRead":0,"cacheWrite":0},
-          "contextWindow": 262144,
-          "maxTokens": 32768
-        }]
-      }
-    }
-  },
-  "agents": {
-    "defaults": {
-      "model": {"primary": "local//Users/you/models/Qwen3.5-9B-8bit"},
-      "models": {"local//Users/you/models/Qwen3.5-9B-8bit": {"alias": "qwen3.5-9b", "streaming": false}},
-      "timeoutSeconds": 600
-    }
-  }
-}
-```
 
 GLM-4.7-flash (mlx_lm):
 ```json
@@ -299,18 +263,18 @@ local-first + cloud fallback (complete config — both providers and agents bloc
   "models": {
     "mode": "merge",
     "providers": {
-      "local": {
-        "baseUrl": "http://127.0.0.1:10012",
+      "local-glm": {
+        "baseUrl": "http://127.0.0.1:10014",
         "apiKey": "DEADBEEF",
         "api": "openai-completions",
         "models": [{
-          "id": "/Users/you/models/Qwen3.5-9B-8bit",
-          "name": "Qwen 3.5 9B",
+          "id": "GLM-4.7-flash",
+          "name": "GLM 4.7 Flash",
           "reasoning": false,
-          "input": ["text", "image"],
+          "input": ["text"],
           "cost": {"input":0,"output":0,"cacheRead":0,"cacheWrite":0},
-          "contextWindow": 262144,
-          "maxTokens": 32768
+          "contextWindow": 131072,
+          "maxTokens": 16384
         }]
       }
     }
@@ -318,11 +282,11 @@ local-first + cloud fallback (complete config — both providers and agents bloc
   "agents": {
     "defaults": {
       "model": {
-        "primary": "local//Users/you/models/Qwen3.5-9B-8bit",
+        "primary": "local-glm/GLM-4.7-flash",
         "fallbacks": ["openai/gpt-5.4", "anthropic/claude-sonnet-4-5"]
       },
       "models": {
-        "local//Users/you/models/Qwen3.5-9B-8bit": {"alias": "Qwen Local", "streaming": false},
+        "local-glm/GLM-4.7-flash": {"alias": "GLM Local", "streaming": false},
         "openai/gpt-5.4": {"alias": "GPT"},
         "anthropic/claude-sonnet-4-5": {"alias": "Sonnet"}
       },
@@ -485,28 +449,28 @@ openclaw run "Run a SecureClaw security audit on my current setup and summarize 
 
 logs:
 ```bash
-pm2 logs qwen3.5-9b
-pm2 logs mlx-proxy-qwen
+pm2 logs mlx-vlm-server
+pm2 logs mlx-proxy-vlm
 ```
 
 inspect_raw_requests (socat):
 ```bash
-pm2 stop mlx-proxy-qwen
+pm2 stop mlx-proxy-vlm
 socat -v TCP-LISTEN:10012,reuseaddr,fork \
   SYSTEM:'cat; echo -e "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n{\"choices\":[{\"message\":{\"role\":\"assistant\",\"content\":\"ok\"}}]}"'
 ```
 
 curl_debug:
 ```bash
-# basic
+# basic (replace /Users/you/models/<MODEL> with your actual model path)
 curl -X POST http://127.0.0.1:10002/v1/chat/completions -H "Content-Type: application/json" \
-  -d '{"model":"/Users/you/models/Qwen3.5-9B-8bit","messages":[{"role":"user","content":"hi"}],"stream":false}'
+  -d '{"model":"/Users/you/models/<MODEL>","messages":[{"role":"user","content":"hi"}],"stream":false}'
 # with tools
 curl -X POST http://127.0.0.1:10002/v1/chat/completions -H "Content-Type: application/json" \
-  -d '{"model":"/Users/you/models/Qwen3.5-9B-8bit","messages":[{"role":"user","content":"hi"}],"stream":false,"tools":[]}'
+  -d '{"model":"/Users/you/models/<MODEL>","messages":[{"role":"user","content":"hi"}],"stream":false,"tools":[]}'
 # array content (multimodal format)
 curl -X POST http://127.0.0.1:10002/v1/chat/completions -H "Content-Type: application/json" \
-  -d '{"model":"/Users/you/models/Qwen3.5-9B-8bit","messages":[{"role":"user","content":[{"type":"text","text":"hi"}]}],"stream":false}'
+  -d '{"model":"/Users/you/models/<MODEL>","messages":[{"role":"user","content":[{"type":"text","text":"hi"}]}],"stream":false}'
 ```
 
 ## MONITORING
@@ -564,11 +528,11 @@ pm2 status
 
 # 2. model server — should return JSON with model list
 curl -sf http://127.0.0.1:10004/v1/models   # mlx_lm (GLM/kimi)
-curl -sf http://127.0.0.1:10002/v1/models   # mlx_vlm (Qwen3.5)
+curl -sf http://127.0.0.1:10002/v1/models   # mlx_vlm
 
 # 3. proxy — should mirror model server response
 curl -sf http://127.0.0.1:10014/v1/models   # GLM proxy
-curl -sf http://127.0.0.1:10012/v1/models   # Qwen proxy
+curl -sf http://127.0.0.1:10012/v1/models   # mlx_vlm proxy
 
 # 4. openclaw gateway
 openclaw gateway status   # expect: Runtime: running, Listening: 127.0.0.1:18789
@@ -581,10 +545,10 @@ curl -s -X POST http://127.0.0.1:10014/v1/chat/completions \
   | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['choices'][0]['message']['content'])"
 # expect: non-empty response (GLM is a reasoning model — needs max_tokens>=4000 to finish thinking)
 
-# Qwen (mlx_vlm — must pass full model path in request body):
+# mlx_vlm (must pass full model path in request body):
 curl -s -X POST http://127.0.0.1:10012/v1/chat/completions \
   -H "Content-Type: application/json" \
-  -d '{"model":"/Users/you/models/Qwen3.5-9B-8bit","messages":[{"role":"user","content":"Say hello."}],"stream":false,"max_tokens":100}' \
+  -d '{"model":"/Users/you/models/<MODEL>","messages":[{"role":"user","content":"Say hello."}],"stream":false,"max_tokens":100}' \
   | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['choices'][0]['message']['content'])"
 # expect: non-empty response; first call takes ~30s to load model into GPU
 
@@ -593,7 +557,7 @@ openclaw dashboard
 ```
 
 expected_state:
-- pm2: glm-4.7-flash=online, mlx-proxy-glm=online (add qwen3.5/mlx-proxy-qwen if Qwen downloaded)
+- pm2: glm-4.7-flash=online, mlx-proxy-glm=online
 - gateway: running on 127.0.0.1:18789
 - inference: non-empty content field in response
 - dashboard: opens browser, no token prompt (token is in the URL hash)
@@ -605,7 +569,7 @@ Removes OpenClaw, model servers, proxy, and all associated data. Each block is i
 ```bash
 # 1. stop and remove pm2 model servers + proxy
 pm2 delete glm-4.7-flash mlx-proxy-glm 2>/dev/null || true
-pm2 delete qwen3.5-35b mlx-proxy-qwen 2>/dev/null || true   # if Qwen was set up
+pm2 delete mlx-vlm-server mlx-proxy-vlm 2>/dev/null || true   # if mlx_vlm was set up
 pm2 save
 
 # 2. remove pm2 LaunchAgent (auto-start on reboot)
@@ -624,12 +588,12 @@ rm -rf ~/.openclaw
 
 # 6. remove model weights (LARGE — frees disk space)
 rm -rf ~/models/GLM-4.7-flash-8bit
-rm -rf ~/models/Qwen3.5-35B-A3B-8bit   # if downloaded
+rm -rf ~/models/<YOUR_MODEL>            # if downloaded
 rm -rf ~/models/mlx-venv                # shared venv
 
 # 7. remove HuggingFace model cache
 rm -rf ~/.cache/huggingface/hub/models--mlx-community--GLM-4.7-flash-8bit
-rm -rf ~/.cache/huggingface/hub/models--mlx-community--Qwen3.5-35B-A3B-8bit
+rm -rf ~/.cache/huggingface/hub/models--mlx-community--<YOUR_MODEL>
 
 # 8. [optional] uninstall pm2 globally (only if not used for other projects)
 # npm uninstall -g pm2
