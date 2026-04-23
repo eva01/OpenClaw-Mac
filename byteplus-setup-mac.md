@@ -16,14 +16,20 @@ CONSTRAINTS:
 
 ## MODELS
 
-| id | name | context | max tokens |
-|----|------|---------|------------|
-| `Kimi-K2.5` | Kimi K2.5 | 256k | 32k |
-| `glm-4.7` | GLM 4.7 | 200k | 128k |
-| `dola-seed-2.0-pro` | Dola Seed 2.0 Pro | 256k | 128k |
-| `dola-seed-2.0-lite` | Dola Seed 2.0 Lite | 256k | 128k |
+| id | name |
+|----|------|
+| `ark-code-latest` | **Default** — routes to model selected in the BytePlus web console |
+| `bytedance-seed-code` | ByteDance Seed Code |
+| `kimi-k2.5` | Kimi K2.5 |
+| `gpt-oss-120b` | GPT OSS 120B |
+| `glm-5.1` | GLM 5.1 |
+| `glm-4.7` | GLM 4.7 |
+| `dola-seed-2.0-code` | Dola Seed 2.0 Code |
+| `dola-seed-2.0-pro` | Dola Seed 2.0 Pro |
+| `dola-seed-2.0-lite` | Dola Seed 2.0 Lite |
 
-Default: `Kimi-K2.5` — Base URL: `https://ark.ap-southeast.bytepluses.com/api/coding/v3` (fixed)
+Default: `ark-code-latest` — routes to the model selected in the BytePlus Coding Plan web console.
+Base URL: `https://ark.ap-southeast.bytepluses.com/api/coding/v3` (fixed)
 
 ---
 
@@ -180,8 +186,11 @@ openclaw gateway status 2>&1 | grep -qi "running" \
 
 ## STEP 5 — CONFIGURE BYTEPLUS
 
-Don't have a BytePlus Coding Plan account yet? Sign up with a discount:
+Don't have a BytePlus Coding Plan account yet? First month is $9 USD — sign up with a discount:
 https://www.byteplus.com/activity/codingplan?ac=MMAUCIS9NT1S&rc=HJA73DT3
+
+Once signed up, choose your preferred model in the web console (the `ark-code-latest` default routes to it automatically):
+https://console.byteplus.com/ark/region:ark+ap-southeast-1/openManagement
 
 PAUSE: Ask the user for their BytePlus Coding Plan API key (from the BytePlus Coding Plan console). Then substitute it below as `BYTEPLUS_KEY` and run the block.
 
@@ -201,7 +210,7 @@ MODELS_JSON=$(curl -s "$BYTEPLUS_BASE/models" -H "Authorization: Bearer $BYTEPLU
 if echo "$MODELS_JSON" | jq -e '.data' &>/dev/null; then
   echo "INFO: available models:"
   echo "$MODELS_JSON" | jq -r '.data[].id' | sed 's/^/  /'
-  MODEL_DEFAULT=$(echo "$MODELS_JSON" | jq -r '[.data[].id | select(test("Kimi-K2.5|kimi|K2.5"; "i"))] | first // "Kimi-K2.5"')
+  MODEL_DEFAULT="ark-code-latest"
   MODELS_ARRAY=$(echo "$MODELS_JSON" | jq '[.data[] | {
     "id": .id,
     "name": .id,
@@ -214,12 +223,16 @@ if echo "$MODELS_JSON" | jq -e '.data' &>/dev/null; then
   echo "PASS: key valid — default model=$MODEL_DEFAULT"
 else
   echo "WARN: could not query /models — using hardcoded list"
-  MODEL_DEFAULT="Kimi-K2.5"
+  MODEL_DEFAULT="ark-code-latest"
   MODELS_ARRAY='[
-    {"id":"Kimi-K2.5",         "name":"Kimi K2.5",         "reasoning":false,"input":["text"],        "cost":{"input":0,"output":0,"cacheRead":0,"cacheWrite":0},"contextWindow":262144,"maxTokens":32768},
-    {"id":"glm-4.7",           "name":"GLM 4.7",            "reasoning":false,"input":["text"],        "cost":{"input":0,"output":0,"cacheRead":0,"cacheWrite":0},"contextWindow":200000,"maxTokens":131072},
-    {"id":"dola-seed-2.0-pro", "name":"Dola Seed 2.0 Pro", "reasoning":false,"input":["text","image"],"cost":{"input":0,"output":0,"cacheRead":0,"cacheWrite":0},"contextWindow":262144,"maxTokens":131072},
-    {"id":"dola-seed-2.0-lite","name":"Dola Seed 2.0 Lite","reasoning":false,"input":["text","image"],"cost":{"input":0,"output":0,"cacheRead":0,"cacheWrite":0},"contextWindow":262144,"maxTokens":131072}
+    {"id":"bytedance-seed-code","name":"ByteDance Seed Code","reasoning":false,"input":["text"],"cost":{"input":0,"output":0,"cacheRead":0,"cacheWrite":0},"contextWindow":262144,"maxTokens":131072},
+    {"id":"kimi-k2.5",          "name":"Kimi K2.5",          "reasoning":false,"input":["text"],"cost":{"input":0,"output":0,"cacheRead":0,"cacheWrite":0},"contextWindow":262144,"maxTokens":32768},
+    {"id":"gpt-oss-120b",       "name":"GPT OSS 120B",       "reasoning":false,"input":["text"],"cost":{"input":0,"output":0,"cacheRead":0,"cacheWrite":0},"contextWindow":131072,"maxTokens":65536},
+    {"id":"glm-5.1",            "name":"GLM 5.1",             "reasoning":false,"input":["text"],"cost":{"input":0,"output":0,"cacheRead":0,"cacheWrite":0},"contextWindow":131072,"maxTokens":65536},
+    {"id":"glm-4.7",            "name":"GLM 4.7",             "reasoning":false,"input":["text"],"cost":{"input":0,"output":0,"cacheRead":0,"cacheWrite":0},"contextWindow":200000,"maxTokens":131072},
+    {"id":"dola-seed-2.0-code", "name":"Dola Seed 2.0 Code", "reasoning":false,"input":["text"],"cost":{"input":0,"output":0,"cacheRead":0,"cacheWrite":0},"contextWindow":262144,"maxTokens":131072},
+    {"id":"dola-seed-2.0-pro",  "name":"Dola Seed 2.0 Pro",  "reasoning":false,"input":["text"],"cost":{"input":0,"output":0,"cacheRead":0,"cacheWrite":0},"contextWindow":262144,"maxTokens":131072},
+    {"id":"dola-seed-2.0-lite", "name":"Dola Seed 2.0 Lite", "reasoning":false,"input":["text"],"cost":{"input":0,"output":0,"cacheRead":0,"cacheWrite":0},"contextWindow":262144,"maxTokens":131072}
   ]'
 fi
 
