@@ -1,13 +1,9 @@
-# OpenClaw + Local LLM — Apple Silicon Mac
-
-<!--
-  Human summary: Setup guide for running OpenClaw (AI agent platform) with local LLMs
-  on Apple Silicon Mac using mlx_lm / mlx_vlm as inference backend. Covers model
-  selection, venv setup, pm2 process management, proxy configuration, OpenClaw config,
-  Telegram channel integration, Discord auth, recommended skills (including SecureClaw),
-  and memory/GPU monitoring tools (macmon, mactop, asitop, fluidtop).
-  No cloud API required — fully local and private. Script: setup-telegram.sh for automation.
--->
+<!-- local-llm-setup-mac.md — OpenClaw + Local LLM detailed setup (Apple Silicon Mac) -->
+<!-- Human summary: Full setup guide for running OpenClaw with local LLMs on Apple Silicon Mac
+     using mlx_lm / mlx_vlm as inference backend. Covers model selection, venv setup, pm2 process
+     management, proxy configuration, OpenClaw config, cloud provider fallbacks, Discord, Telegram,
+     skills, debugging, monitoring, and uninstall. No cloud API required — fully local and private.
+     Quick-start: README.md. Telegram setup: setup-telegram.md. -->
 
 CONTEXT: AI agent executing this file. Run or configure each step as directed. Config file: `~/.openclaw/openclaw.json` (hot-reloads on save). Execute only the block matching the chosen model — do not run both mlx_vlm and mlx_lm blocks.
 
