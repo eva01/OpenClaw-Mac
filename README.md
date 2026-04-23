@@ -447,6 +447,16 @@ Invoke-RestMethod -Uri "$BYTEPLUS_BASE/chat/completions" `
 
 ---
 
+## NEXT STEP — TELEGRAM BOT (OPTIONAL)
+
+OpenClaw is now connected to BytePlus Coding Plan. To chat with it and approve agent actions from your phone, set up the Telegram bot next:
+
+```
+setup-telegram.md
+```
+
+---
+
 ## TROUBLESHOOTING
 
 | symptom | fix |
