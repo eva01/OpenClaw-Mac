@@ -236,12 +236,14 @@ else { Write-Host "FAIL: gateway not running — run: openclaw doctor"; exit 1 }
 
 The API key is written directly into the provider config in `openclaw.json`. The base URL is fixed.
 
-PAUSE: Ask the user for their BytePlus Coding Plan API key. It can be found in the BytePlus Coding Plan console. Then substitute it into the block for their OS below and run it.
+Don't have a BytePlus Coding Plan account yet? Sign up with a discount:
+https://www.byteplus.com/activity/codingplan?ac=MMAUCIS9NT1S&rc=HJA73DT3
+
+PAUSE: Ask the user for their BytePlus Coding Plan API key (found in the BytePlus Coding Plan console after signing up). Then substitute it into the block for their OS below and run it.
 
 ### macOS
 
 ```bash
-# Set from user input:
 BYTEPLUS_KEY="your-api-key-here"   # replace with actual key
 BYTEPLUS_BASE="https://ark.ap-southeast.bytepluses.com/api/coding/v3"
 
@@ -339,7 +341,6 @@ curl -s -X POST "$BYTEPLUS_BASE/chat/completions" \
 ### Windows
 
 ```powershell
-# Set from user input:
 $BYTEPLUS_KEY  = "your-api-key-here"
 $BYTEPLUS_BASE = "https://ark.ap-southeast.bytepluses.com/api/coding/v3"
 

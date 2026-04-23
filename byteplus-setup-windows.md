@@ -246,6 +246,9 @@ if ($gs -match 'running') {
 
 ## STEP 6 — CONFIGURE BYTEPLUS
 
+Don't have a BytePlus Coding Plan account yet? Sign up with a discount:
+https://www.byteplus.com/activity/codingplan?ac=MMAUCIS9NT1S&rc=HJA73DT3
+
 PAUSE: Ask the user for their BytePlus Coding Plan API key (from the BytePlus Coding Plan console). Then substitute it below as `BYTEPLUS_KEY` and run the block.
 
 ```powershell
