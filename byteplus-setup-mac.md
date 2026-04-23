@@ -439,6 +439,14 @@ openclaw gateway status 2>&1 | grep -qi "running" && echo "PASS: gateway running
 
 ---
 
+## OPTIONAL — TELEGRAM BOT
+
+Connect OpenClaw to a Telegram bot so you can chat with it and approve agent actions from your phone.
+
+See `setup-telegram.md` for the full setup guide.
+
+---
+
 ## UPDATE
 
 ```bash

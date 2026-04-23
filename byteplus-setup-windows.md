@@ -572,6 +572,14 @@ if ($gs -match 'running') { Write-Host "PASS: gateway running" } else { Write-Ho
 
 ---
 
+## OPTIONAL — TELEGRAM BOT
+
+Connect OpenClaw to a Telegram bot so you can chat with it and approve agent actions from your phone.
+
+See `setup-telegram.md` for the full setup guide.
+
+---
+
 ## UPDATE
 
 ```powershell

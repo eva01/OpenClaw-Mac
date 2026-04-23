@@ -478,3 +478,4 @@ For Gemini embeddings, Google Workspace (gog skill), benchmarking, and full trou
 
 - **macOS**: `byteplus-setup-mac.md`
 - **Windows**: `byteplus-setup-windows.md`
+- **Telegram bot**: `setup-telegram.md` — connect OpenClaw to a Telegram bot so you can chat with it and approve agent actions from your phone
