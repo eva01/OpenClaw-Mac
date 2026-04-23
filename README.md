@@ -419,6 +419,16 @@ Invoke-RestMethod -Uri "$ILMU_BASE/chat/completions" `
 
 ---
 
+## NEXT STEP — TELEGRAM BOT (OPTIONAL)
+
+OpenClaw is now connected to ilmu.ai. To chat with it and approve agent actions from your phone, set up the Telegram bot next:
+
+```
+setup-telegram.md
+```
+
+---
+
 ## TROUBLESHOOTING
 
 | symptom | fix |
